@@ -35,6 +35,7 @@ import {
   Info,
   AlertTriangle,
   RefreshCw,
+  Zap,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -78,11 +79,26 @@ export default function DashboardPage() {
     else setIsRefreshing(true);
 
     try {
+      const token =
+        typeof window !== 'undefined'
+          ? localStorage.getItem('reachinbox_token')
+          : null;
+
+      // If user is not authenticated (no token), immediately show Login Page
+      if (!token) {
+        setUser(null);
+        setScheduledJobs([]);
+        setSentJobs([]);
+        setLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+
       const isOnline = await checkBackendConnection();
       setIsBackendConnected(isOnline);
 
       if (isOnline) {
-        // Backend connected -> load live database and queue data via single roundtrip
+        // Backend connected -> load authenticated profile & live queue data
         const [feedData, userData] = await Promise.all([
           fetchDashboardFeed(),
           isInitial ? fetchCurrentUser() : Promise.resolve(null),
@@ -104,30 +120,30 @@ export default function DashboardPage() {
             }
             return userData;
           });
+        } else if (isInitial) {
+          // Token expired or invalid
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('reachinbox_token');
+          }
+          setUser(null);
+          setLoading(false);
+          setIsRefreshing(false);
+          return;
         }
+
         if (feedData?.stats) setStats(feedData.stats);
         if (feedData?.scheduled) setScheduledJobs(feedData.scheduled);
         if (feedData?.sent) setSentJobs(feedData.sent);
       } else {
-        // Backend temporarily unreachable
-        const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('reachinbox_token');
-        if (!hasToken) {
-          setUser(mockUser);
-          setStats(mockStats);
-          setScheduledJobs(mockScheduledJobs);
-          setSentJobs(mockSentJobs);
-        }
-      }
-    } catch (err) {
-      console.error('Error refreshing dashboard data', err);
-      setIsBackendConnected(false);
-      const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('reachinbox_token');
-      if (!hasToken) {
+        // Backend temporarily unreachable but user was authenticated
         setUser(mockUser);
         setStats(mockStats);
         setScheduledJobs(mockScheduledJobs);
         setSentJobs(mockSentJobs);
       }
+    } catch (err) {
+      console.error('Error refreshing dashboard data', err);
+      setIsBackendConnected(false);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -151,22 +167,26 @@ export default function DashboardPage() {
     loadData(true);
   }, [loadData]);
 
-  // Periodic polling every 10 seconds to keep queue stats fresh
+  // Periodic polling every 10 seconds to keep queue stats fresh (only when authenticated)
   useEffect(() => {
+    if (!user) return;
     const interval = setInterval(() => {
       loadData(false);
     }, 10000);
     return () => clearInterval(interval);
-  }, [loadData]);
+  }, [loadData, user]);
 
   const handleDevLogin = async () => {
     try {
+      setLoading(true);
       const devUser = await loginWithDevAccount();
       setUser(devUser);
-      showToast('Logged in as Alex Morgan (Evaluation Dev Account)', 'success');
+      showToast(`Welcome back, ${devUser.name}!`, 'success');
       await loadData(false);
     } catch {
       showToast('Dev login failed', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -176,6 +196,8 @@ export default function DashboardPage() {
     }
     await logoutUser();
     setUser(null);
+    setScheduledJobs([]);
+    setSentJobs([]);
     showToast('Signed out successfully', 'info');
   };
 
@@ -223,9 +245,41 @@ export default function DashboardPage() {
     );
   }, [sentJobs, searchQuery]);
 
-  // If user is not authenticated, render ReachInbox Login
-  if (!user && !loading) {
-    return <AuthModal onDevLogin={handleDevLogin} />;
+  // Full-page branded loading splash while resolving initial session
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0B0F17] flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-400 text-white shadow-xl shadow-brand-500/30 animate-pulse">
+            <Zap className="h-7 w-7 fill-white text-white" />
+          </div>
+          <p className="text-xs text-slate-400 font-medium tracking-wider uppercase">Loading Session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If user is not authenticated, render ReachInbox Login first
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[#0B0F17] text-slate-100 flex flex-col justify-center items-center selection:bg-brand-500 selection:text-white relative">
+        {toastMessage && (
+          <div className="fixed top-5 right-5 z-50 flex items-center space-x-2.5 rounded-xl border border-slate-700 bg-surface-100/95 px-4 py-3 shadow-2xl backdrop-blur-md animate-fade-in text-xs font-medium">
+            {toastMessage.type === 'success' && (
+              <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
+            )}
+            {toastMessage.type === 'error' && (
+              <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+            )}
+            {toastMessage.type === 'info' && (
+              <Info className="h-4 w-4 text-brand-400 shrink-0" />
+            )}
+            <span className="text-slate-200">{toastMessage.text}</span>
+          </div>
+        )}
+        <AuthModal onDevLogin={handleDevLogin} />
+      </div>
+    );
   }
 
   return (

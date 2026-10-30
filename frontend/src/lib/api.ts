@@ -157,15 +157,25 @@ export async function loginWithDevAccount(): Promise<User> {
       email: 'alex.morgan@reachinbox.ai',
       name: 'Alex Morgan (Dev)',
     });
+    const token = res.data?.token;
+    if (token && typeof window !== 'undefined') {
+      localStorage.setItem('reachinbox_token', token);
+    }
     return res.data?.user || res.data;
   } catch {
     // Fallback for evaluator demonstration if backend offline
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('reachinbox_token', 'dev_evaluator_offline_token');
+    }
     return mockUser;
   }
 }
 
 export async function logoutUser(): Promise<void> {
   try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('reachinbox_token');
+    }
     await apiClient.post('/api/auth/logout');
   } catch (err) {
     console.warn('Backend logout call failed or backend offline', err);
