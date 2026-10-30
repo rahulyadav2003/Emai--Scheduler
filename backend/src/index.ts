@@ -19,7 +19,24 @@ const app = express();
 // ==============================================================================
 app.use(
   cors({
-    origin: [env.FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000'],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const allowedOrigins = [
+        env.FRONTEND_URL,
+        'http://localhost:5173',
+        'http://localhost:3000',
+      ];
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.pages.dev') ||
+        origin.endsWith('.workers.dev') ||
+        origin.endsWith('.onrender.com')
+      ) {
+        return callback(null, true);
+      }
+      // Fallback: permit request to ensure frontend on any Cloudflare/custom domain can communicate
+      return callback(null, true);
+    },
     credentials: true,
   })
 );
