@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "email-scheduler",
+  "compatibility_date": "2026-10-30",
+  "assets": {
+    "directory": "./out"
+  }
+}
+
