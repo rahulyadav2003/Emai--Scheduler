@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CampaignStatus {
+  SCHEDULED
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum EmailJobStatus {
+  SCHEDULED
+  SENT
+  FAILED
+  RESCHEDULED
+}
+
+model User {
+  id              String     @id @default(uuid())
+  googleId        String?    @unique
+  email           String     @unique
+  name            String?
+  avatar          String?
+  slackToken      String?
+  slackWebhookUrl String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  campaigns       Campaign[]
+
+  @@map("users")
+}
+
+model Campaign {
+  id                  String         @id @default(uuid())
+  userId              String
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject             String
+  body                String         @db.Text
+  senderEmail         String
+  startTime           DateTime       @default(now())
+  delayBetweenSeconds Int            @default(0)
+  hourlyLimit         Int            @default(100)
+  status              CampaignStatus @default(SCHEDULED)
+  totalRecipients     Int            @default(0)
+  sentCount           Int            @default(0)
+  failedCount         Int            @default(0)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  recipients          EmailJob[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("campaigns")
+}
+
+model EmailJob {
+  id             String         @id @default(uuid())
+  campaignId     String
+  campaign       Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  recipientEmail String
+  subject        String
+  body           String         @db.Text
+  senderEmail    String
+  status         EmailJobStatus @default(SCHEDULED)
+  scheduledAt    DateTime       @default(now())
+  sentAt         DateTime?
+  jobId          String?        @unique
+  etherealUrl    String?
+  errorMessage   String?        @db.Text
+  retryCount     Int            @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([campaignId])
+  @@index([status])
+  @@index([senderEmail])
+  @@index([recipientEmail])
+  @@map("email_jobs")
+}
